@@ -1,0 +1,7 @@
+anthropic
+streamlit
+chromadb
+sentence-transformers
+langgraph
+bleach
+python-dotenv
