@@ -13,15 +13,24 @@ load_dotenv("dppbot/.env")
 api_key = os.getenv("ANTHROPIC_API_KEY")
 client = anthropic.Anthropic(api_key=api_key)
 
-chroma_client = chromadb.PersistentClient(path=os.path.join(os.path.dirname(os.path.abspath(__file__)), "dppbot", "chromadb_sto
-embedding_function = embedding_functions.SentenceTransformerEmbeddingFunction(
-    model_name="all-MiniLM-L6-v2"
-)
+# Lazy loading — these load only when first query runs, not at startup
+_chroma_client = None
+_embedding_function = None
+_collections = None
 
-collection_names = ["certifications-guide", "espr-regulation", "pakistan-exporter-guide", "product-specific", "reach-requirements", "zdhc-guide"]
-collections = {}
-for name in collection_names:
-    collections[name] = chroma_client.get_collection(name=name, embedding_function=embedding_function)
+def get_collections():
+    global _chroma_client, _embedding_function, _collections
+    if _collections is None:
+        chroma_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dppbot", "chromadb_store")
+        _chroma_client = chromadb.PersistentClient(path=chroma_path)
+        _embedding_function = embedding_functions.SentenceTransformerEmbeddingFunction(
+            model_name="all-MiniLM-L6-v2"
+        )
+        collection_names = ["certifications-guide", "espr-regulation", "pakistan-exporter-guide", "product-specific", "reach-requirements", "zdhc-guide"]
+        _collections = {}
+        for name in collection_names:
+            _collections[name] = _chroma_client.get_collection(name=name, embedding_function=_embedding_function)
+    return _collections
 
 class DPPBotState(TypedDict):
     query: str
@@ -66,6 +75,7 @@ def node_product_detector(state):
 
 def node_rag_retriever(state):
     clean = state["clean_query"]
+    collections = get_collections()
     all_chunks = []
     for name, collection in collections.items():
         results = collection.query(query_texts=[clean], n_results=min(2, collection.count()))
